@@ -1,0 +1,53 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: payroute
+      POSTGRES_USER: payroute
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local-payroute-db}
+    ports:
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5433}:5432"
+    volumes:
+      - payroute-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U payroute -d payroute"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "127.0.0.1:${REDIS_HOST_PORT:-6380}:6379"
+    volumes:
+      - payroute-redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  app:
+    build: .
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/payroute
+      SPRING_DATASOURCE_USERNAME: payroute
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-local-payroute-db}
+      SPRING_DATA_REDIS_HOST: redis
+      PAYROUTE_API_KEY: ${PAYROUTE_API_KEY:-local-demo-key}
+      PAYROUTE_WEBHOOK_SECRET: ${PAYROUTE_WEBHOOK_SECRET:-local-webhook-secret-change-me}
+      PAYROUTE_WEBHOOK_DELIVERY_MODE: ${PAYROUTE_WEBHOOK_DELIVERY_MODE:-flaky-once}
+      PAYROUTE_RETRY_BASE_SECONDS: ${PAYROUTE_RETRY_BASE_SECONDS:-2}
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+
+volumes:
+  payroute-postgres:
+  payroute-redis:
